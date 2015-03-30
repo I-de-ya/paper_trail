@@ -30,6 +30,41 @@ module PaperTrail
       # :versions     the name to use for the versions association.  Default is `:versions`.
       # :version      the name to use for the method which returns the version the instance was reified from.
       #               Default is `:version`.
+
+      def has_log(options = {})
+        has_many :log_transactions, as: :loggable, class_name: options[:class_name] || '::PaperTrail::LogTransaction'
+
+        if options[:wrapped_methods].present?
+          options[:wrapped_methods].each do |meth|
+            if meth.is_a?(::Hash)
+              m = meth.keys[0]
+              if meth[meth.keys[0]][:message].present?
+                mgs_method = meth[meth.keys[0]][:message]
+              else
+                mgs = I18n.t("transaction_log.#{self.name.underscore}.#{m}")
+              end
+            else
+              m = meth
+              mgs = I18n.t("transaction_log.#{self.name.underscore}.#{m}")
+            end
+
+            alias_method "#{m}_old".to_sym, m
+
+            define_method(m.to_s) do |*args|
+              mgs ||= send(mgs_method)
+              transaction = PaperTrail::LogTransaction.create(message: mgs) if valid?
+              PaperTrail.log_transaction_id = transaction.id
+
+              send("#{m}_old".to_sym, *args)
+
+              transaction.update_attributes(loggable: self) if valid?
+              PaperTrail.log_transaction_id = nil
+            end
+          end
+        end
+      end
+
+
       def has_paper_trail(options = {})
         # Lazily include the instance methods so we don't clutter up
         # any more ActiveRecord models than we have to.
@@ -172,6 +207,9 @@ module PaperTrail
       end
     end
 
+    module WrappedMethods
+
+    end
     # Wrap the following methods in a module so we can include them only in the
     # ActiveRecord models that declare `has_paper_trail`.
     module InstanceMethods
@@ -256,6 +294,15 @@ module PaperTrail
         PaperTrail.whodunnit = current_whodunnit
       end
 
+      def log_transaction_id(value)
+        raise ArgumentError, 'expected to receive a block' unless block_given?
+        current_log_transaction_id = PaperTrail.log_transaction_id
+        PaperTrail.log_transaction_id = value
+        yield self
+      ensure
+        PaperTrail.log_transaction_id = current_log_transaction_id
+      end
+
       # Mimicks behavior of `touch` method from `ActiveRecord::Persistence`, but generates a version
       #
       # TODO: lookinto leveraging the `after_touch` callback from `ActiveRecord` to allow the
@@ -284,7 +331,8 @@ module PaperTrail
         if paper_trail_switched_on?
           data = {
             :event     => paper_trail_event || 'create',
-            :whodunnit => PaperTrail.whodunnit
+            :whodunnit => PaperTrail.whodunnit,
+            :log_transaction_id => PaperTrail.log_transaction_id,
           }
           if respond_to?(:created_at)
             data[PaperTrail.timestamp_field] = created_at
@@ -308,7 +356,8 @@ module PaperTrail
           data = {
             :event     => paper_trail_event || 'update',
             :object    => self.class.paper_trail_version_class.object_col_is_json? ? object_attrs : PaperTrail.serializer.dump(object_attrs),
-            :whodunnit => PaperTrail.whodunnit
+            :whodunnit => PaperTrail.whodunnit,
+            :log_transaction_id => PaperTrail.log_transaction_id
           }
           if respond_to?(:updated_at)
             data[PaperTrail.timestamp_field] = updated_at
@@ -359,7 +408,8 @@ module PaperTrail
             :item_type => self.class.base_class.name,
             :event     => paper_trail_event || 'destroy',
             :object    => self.class.paper_trail_version_class.object_col_is_json? ? object_attrs : PaperTrail.serializer.dump(object_attrs),
-            :whodunnit => PaperTrail.whodunnit
+            :whodunnit => PaperTrail.whodunnit,
+            log_transaction_id: PaperTrail.log_transaction_id
           }
           if self.class.paper_trail_version_class.column_names.include?('transaction_id')
             data[:transaction_id] = PaperTrail.transaction_id

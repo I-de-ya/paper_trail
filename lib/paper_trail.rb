@@ -25,7 +25,7 @@ module PaperTrail
   end
 
   # ActiveRecord 5 drops support for serialized attributes; for previous
-  # versions of ActiveRecord it is supported, we have a config option 
+  # versions of ActiveRecord it is supported, we have a config option
   # to enable it within PaperTrail.
   def self.serialized_attributes?
     !!PaperTrail.config.serialized_attributes && ::ActiveRecord::VERSION::MAJOR < 5
@@ -67,13 +67,21 @@ module PaperTrail
   # You would normally use this in a migration or on the console,
   # when working with models directly.  In a controller it is set
   # automatically to the `current_user`.
+  def self.whodunnit
+    paper_trail_store[:whodunnit]
+  end
+
   def self.whodunnit=(value)
     paper_trail_store[:whodunnit] = value
   end
 
+  def self.log_transaction_id=(value)
+    paper_trail_store[:log_transaction_id] = value
+  end
+
   # Returns who is reponsible for any changes that occur.
-  def self.whodunnit
-    paper_trail_store[:whodunnit]
+  def self.log_transaction_id
+    paper_trail_store[:log_transaction_id]
   end
 
   # Sets any information from the controller that you want PaperTrail
