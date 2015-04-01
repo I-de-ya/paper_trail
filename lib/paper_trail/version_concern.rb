@@ -17,10 +17,14 @@ module PaperTrail
       validates_presence_of :event
 
       if PaperTrail.active_record_protected_attributes?
-        attr_accessible :item_type, :item_id, :event, :whodunnit, :object, :object_changes, :transaction_id, :created_at, :log_transaction_id
+        attr_accessible :item_type, :item_id, :event, :whodunnit, :object, :object_changes, :transaction_id, :created_at, :log_transaction_id, :alone
       end
+      attr_accessor :alone
 
       after_create :enforce_version_limit!
+
+      before_create :set_transaction
+      # after_create :nullify_transaction
 
       scope :within_transaction, lambda { |id| where :transaction_id => id }
     end
@@ -396,5 +400,23 @@ module PaperTrail
       excess_previous_versions = previous_versions - previous_versions.last(PaperTrail.config.version_limit)
       excess_previous_versions.map(&:destroy)
     end
+
+    def set_transaction
+      unless PaperTrail.log_transaction_id.present?
+        tr = PaperTrail::LogTransaction.create(message: "#{item_type} №#{item_id}: #{event}", loggable: item, whodunnit: PaperTrail.whodunnit)
+        # PaperTrail.log_transaction_id = tr.id
+        self.log_transaction_id = tr.id
+        # print "\n------#{tr.id}: #{PaperTrail.log_transaction_id}\n"
+      end
+    end
+
+    # def alone?
+    #   alone || false
+    # end
+
+    # def nullify_transaction
+    #   PaperTrail.log_transaction_id = nil if alone?
+    #   print "\n------#{PaperTrail.log_transaction_id}\n"
+    # end
   end
 end
