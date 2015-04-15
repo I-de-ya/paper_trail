@@ -52,12 +52,18 @@ module PaperTrail
 
             define_method(m.to_s) do |*args|
               mgs ||= send(mgs_method)
-              transaction = PaperTrail::LogTransaction.create(message: mgs) if valid?
+              if valid?
+                transaction = PaperTrail::LogTransaction.create(message: mgs)
+              end
+
               PaperTrail.log_transaction_id = transaction.id if valid?
 
               send("#{m}_old".to_sym, *args)
 
-              transaction.update_attributes(loggable: self) if valid?
+              if transaction.present?
+                transaction.update_attributes(loggable: self)
+              end
+
               PaperTrail.log_transaction_id = nil
             end
           end
