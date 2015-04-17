@@ -58,13 +58,14 @@ module PaperTrail
 
               PaperTrail.log_transaction_id = transaction.id if valid?
 
-              send("#{m}_old".to_sym, *args)
+              returned = send("#{m}_old".to_sym, *args)
 
               if transaction.present?
                 transaction.update_attributes(loggable: self)
               end
 
               PaperTrail.log_transaction_id = nil
+              returned
             end
           end
         end
